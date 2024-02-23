@@ -1,0 +1,17 @@
+/bin/
+/obj/
+/bin/
+/.vscode/
+/.idea/
+/.history/
+.vs/
+*.dll
+*.pdb
+*.cache
+*.log
+*.user
+*.vscode/
+*.suo
+*.sln.iml
+/appsettings.json
+/tempVoiceMessage.ogg
