@@ -10,6 +10,7 @@ using Telegram.Bot.Exceptions;
 using Telegram.Bot.Polling;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
+using Newtonsoft.Json;
 
 namespace VoiceRecognitionBot
 {
@@ -23,6 +24,7 @@ namespace VoiceRecognitionBot
         private readonly CancellationTokenSource _cancellationTokenSource;
         private readonly string _apiKeyId;
         private readonly string _apiKeySecret;
+        private long _chatId;
 
 
         public TelegramBot(IConfiguration configuration)
@@ -41,7 +43,12 @@ namespace VoiceRecognitionBot
             // Configure HttpClient headers
             _httpClient.DefaultRequestHeaders.Add("keyId", _apiKeyId);
             _httpClient.DefaultRequestHeaders.Add("keySecret", _apiKeySecret);
+
+            // Initialize _chatId
+            _chatId = 0;
         }
+
+        public long ChatId => _chatId;
 
         public async Task StartAsync()
         {
@@ -59,19 +66,28 @@ namespace VoiceRecognitionBot
 
         private async Task HandleUpdateAsync(ITelegramBotClient botClient, Update update, CancellationToken cancellationToken)
         {
-            if (update.Message.Type == MessageType.Voice)
+            try
             {
-                Message voiceMessage = update.Message;
-                Console.WriteLine($"Received voice message from {voiceMessage.From.Username}");
+                _chatId = update.Message.Chat.Id;
 
-                string fileId = voiceMessage.Voice.FileId;
-                Telegram.Bot.Types.File file = await _botClient.GetFileAsync(fileId);
-                using FileStream tempFileStream = System.IO.File.Create("tempVoiceMessage.ogg");
-                await _botClient.DownloadFileAsync(file.FilePath, tempFileStream);
-                tempFileStream.Seek(0, SeekOrigin.Begin);
+                if (update.Message.Type == MessageType.Voice)
+                {
+                    Message voiceMessage = update.Message;
+                    Console.WriteLine($"Received voice message from {voiceMessage.From.Username}");
 
-                string recognizedText = await RecognizeSpeechAsync(tempFileStream);
-                await _botClient.SendTextMessageAsync(voiceMessage.Chat.Id, recognizedText);
+                    string fileId = voiceMessage.Voice.FileId;
+                    Telegram.Bot.Types.File file = await _botClient.GetFileAsync(fileId);
+                    using FileStream tempFileStream = System.IO.File.Create("tempVoiceMessage.ogg");
+                    await _botClient.DownloadFileAsync(file.FilePath, tempFileStream);
+                    tempFileStream.Seek(0, SeekOrigin.Begin);
+
+                    string recognizedText = await RecognizeSpeechAsync(tempFileStream);
+                    await _botClient.SendTextMessageAsync(voiceMessage.Chat.Id, recognizedText);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"An unexpected error occurred: {ex}");
             }
         }
 
@@ -84,6 +100,7 @@ namespace VoiceRecognitionBot
             };
 
             Console.WriteLine(errorMessage);
+            // sendMessage($"🙅🏻‍♀️ {errorMessage}");
             return Task.CompletedTask;
         }
 
@@ -103,6 +120,7 @@ namespace VoiceRecognitionBot
 
             if (!response.IsSuccessStatusCode)
             {
+                await sendMessage($"💃🏽 Speechflow API request failed: {response.StatusCode}");
                 throw new Exception($"Speechflow API request failed: {response.StatusCode}");
             }
 
@@ -130,17 +148,31 @@ namespace VoiceRecognitionBot
                         concatenatedText.Append(sentence.s);
                         concatenatedText.Append(" ");
                     }
+                    Console.WriteLine(concatenatedText.ToString());
                     return concatenatedText.ToString();
                 }
                 else if (queryJSON.code == 11001)
                 {
+                    Console.WriteLine("Wait...");
+                    await sendMessage("⌛ Wait...");
                     await Task.Delay(3000); // Wait and then query again
                 }
                 else
                 {
+                    await sendMessage($"🕺 Speechflow API query failed: {queryJSON.msg}");
                     throw new Exception($"Speechflow API query failed: {queryJSON.msg}");
                 }
             }
+        }
+
+        async public Task sendMessage(string message)
+        {
+            if (ChatId == 0)
+            {
+                Console.WriteLine("No chat ID");
+                return;
+            }
+            await _botClient.SendTextMessageAsync(ChatId, message);
         }
 
         public void Dispose()
