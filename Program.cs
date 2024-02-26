@@ -157,12 +157,9 @@ namespace VoiceRecognitionBot
                 if (queryJSON.code == 11000)
                 {
                     ResponseResult responseResult = Newtonsoft.Json.JsonConvert.DeserializeObject<ResponseResult>(queryJSON.result.ToString());
+                    string[] sentenceValues = responseResult?.sentences?.Select(sentence => sentence.s ?? string.Empty)?.ToArray() ?? Array.Empty<string>();
                     StringBuilder concatenatedText = new StringBuilder();
-                    foreach (Sentence sentence in responseResult.sentences)
-                    {
-                        concatenatedText.Append(sentence.s);
-                        concatenatedText.Append(" ");
-                    }
+                    concatenatedText.Append(string.Join(" ", sentenceValues));
                     Console.WriteLine(concatenatedText.ToString());
                     return concatenatedText.ToString();
                 }
