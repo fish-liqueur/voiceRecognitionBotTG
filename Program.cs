@@ -30,16 +30,16 @@ namespace VoiceRecognitionBot
         public TelegramBot(IConfiguration configuration)
         {
             _configuration = (IConfigurationRoot)configuration;
-            _botClient = new TelegramBotClient(_configuration["TelegramApiKey"]);
+            string TelegramApiKey = _configuration["TelegramApiKey"] ?? throw new ArgumentNullException("TelegramApiKey");
+            _botClient = new TelegramBotClient(TelegramApiKey);
             _httpClient = new HttpClient();
             _lang = _configuration["Speechflow:LanguageCode"] ?? "ru";
             _resultType = 1;
             _cancellationTokenSource = new CancellationTokenSource();
 
             // Set up Speechflow API credentials
-            _apiKeyId = _configuration["Speechflow:KeyId"];
-            _apiKeySecret = _configuration["Speechflow:KeySecret"];
-
+            _apiKeyId = _configuration["Speechflow:KeyId"] ?? throw new ArgumentNullException("Speechflow:KeyId");
+            _apiKeySecret = _configuration["Speechflow:KeySecret"] ?? throw new ArgumentNullException("Speechflow:KeySecret");
             // Configure HttpClient headers
             _httpClient.DefaultRequestHeaders.Add("keyId", _apiKeyId);
             _httpClient.DefaultRequestHeaders.Add("keySecret", _apiKeySecret);
@@ -68,17 +68,23 @@ namespace VoiceRecognitionBot
         {
             try
             {
+                if (update.Message?.Chat?.Id == null)
+                {
+                    Console.WriteLine("Chat ID is null");
+                    return;
+                }
                 _chatId = update.Message.Chat.Id;
 
                 if (update.Message.Type == MessageType.Voice)
                 {
                     Message voiceMessage = update.Message;
-                    Console.WriteLine($"Received voice message from {voiceMessage.From.Username}");
+                    Console.WriteLine($"Received voice message from {voiceMessage.From?.Username}");
 
-                    string fileId = voiceMessage.Voice.FileId;
+                    string fileId = voiceMessage.Voice != null ? voiceMessage.Voice.FileId : throw new InvalidOperationException("Voice is null");
                     Telegram.Bot.Types.File file = await _botClient.GetFileAsync(fileId);
-                    using FileStream tempFileStream = System.IO.File.Create("tempVoiceMessage.ogg");
+                    using FileStream tempFileStream = System.IO.File.Create("tempVoiceMessage.ogg")!;
                     await _botClient.DownloadFileAsync(file.FilePath, tempFileStream);
+
                     tempFileStream.Seek(0, SeekOrigin.Begin);
 
                     string recognizedText = await RecognizeSpeechAsync(tempFileStream);
@@ -125,7 +131,11 @@ namespace VoiceRecognitionBot
             }
 
             string createResult = await response.Content.ReadAsStringAsync();
-            dynamic createResponse = Newtonsoft.Json.JsonConvert.DeserializeObject<dynamic>(createResult);
+            if (String.IsNullOrEmpty(createResult))
+            {
+                throw new Exception("The response content is null.");
+            }
+            dynamic createResponse = Newtonsoft.Json.JsonConvert.DeserializeObject<dynamic>(createResult)!;
             string taskId = createResponse.taskId.ToString();
 
 
@@ -137,7 +147,12 @@ namespace VoiceRecognitionBot
                 queryResponse.EnsureSuccessStatusCode();
 
                 string queryResult = await queryResponse.Content.ReadAsStringAsync();
-                dynamic queryJSON = Newtonsoft.Json.JsonConvert.DeserializeObject<dynamic>(queryResult);
+                if (String.IsNullOrEmpty(createResult))
+                {
+                    throw new Exception("The response content is null.");
+                }
+                dynamic queryJSON = Newtonsoft.Json.JsonConvert.DeserializeObject<dynamic>(queryResult)!;
+
 
                 if (queryJSON.code == 11000)
                 {
